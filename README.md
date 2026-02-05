@@ -4,13 +4,19 @@
 
 Paste a link. Get a sus score. It's that simple.
 
+⚠️ **Important:** This tool provides automated analysis only. Always use common sense and verify suspicious links independently. No tool can guarantee 100% accuracy.
+
 ## What It Checks
 
-- 🕐 **Domain Age** — New domains are sus
+- 🕐 **Domain Age** — New domains are sus (enhanced thresholds)
 - 🔒 **SSL Certificate** — Missing or invalid = red flag
-- 🚨 **Reputation** — Checks against URLhaus malware database
-- 🔗 **URL Patterns** — Detects phishing tricks & suspicious TLDs
-- ↪️ **Redirect Chains** — Too many redirects = sketchy
+- 🚨 **Reputation** — Checks URLhaus malware & PhishTank phishing databases
+- 🔗 **URL Patterns** — Detects phishing tricks, suspicious TLDs, & malicious patterns
+- ↪️ **Redirect Chains** — Too many redirects = sketchy (with loop detection)
+- 🌐 **DNS Records** — Validates domain resolution & checks for suspicious IPs
+- 🎭 **Homograph Attacks** — Detects Unicode spoofing & look-alike characters
+- 🎯 **Typosquatting** — Identifies domains impersonating popular brands
+- 🔗 **URL Shorteners** — Flags shortened URLs with unknown destinations
 
 ## Tech Stack
 
@@ -41,15 +47,38 @@ One-click deploy to Vercel:
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/rebelchris/susscore)
 
+## Features
+
+### Advanced Detection
+
+- **9 comprehensive checks** covering multiple attack vectors
+- **Sophisticated scoring algorithm** with category weighting and multipliers
+- **40+ popular brands** monitored for typosquatting
+- **34 suspicious TLDs** flagged for abuse patterns
+- **19 URL shorteners** detected
+- **Homograph attack detection** for Unicode spoofing
+- **DNS validation** with private IP detection
+- **Redirect loop detection** with cycle prevention
+
+### Smart Analysis
+
+- Levenshtein distance algorithm for typosquatting detection
+- Vowel ratio analysis for random domain detection
+- Mixed character set detection (Cyrillic/Greek/Latin)
+- Punycode (xn--) internationalized domain flagging
+- Executable file extension detection
+- Phishing keyword pattern matching
+
 ## Contributing
 
 PRs welcome! Some ideas:
 
-- [ ] Add more reputation APIs (PhishTank, Google Safe Browsing)
 - [ ] Screenshot preview of suspicious sites
 - [ ] Browser extension
-- [ ] API endpoint for programmatic access
 - [ ] Historical data / trending scams
+- [ ] Machine learning model for pattern detection
+- [ ] WHOIS privacy detection
+- [ ] Content analysis (HTML/JavaScript inspection)
 
 ## License
 
@@ -57,4 +86,4 @@ MIT — do whatever you want with it.
 
 ---
 
-Made with 🔍 by [@ArunMichaelDsmo](https://twitter.com/ArunMichaelDsmo)
+Made with 🔍 by [@BongersChris1](https://x.com/BongersChris1)
