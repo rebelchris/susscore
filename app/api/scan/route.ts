@@ -353,6 +353,105 @@ async function checkDomainAge(domain: string): Promise<CheckResult> {
   }
 }
 
+// Check WHOIS privacy protection
+async function checkWhoisPrivacy(domain: string): Promise<CheckResult> {
+  try {
+    const rdapUrl = `https://rdap.org/domain/${domain}`;
+
+    const response = await fetch(rdapUrl, {
+      signal: AbortSignal.timeout(5000),
+      headers: { Accept: 'application/rdap+json' },
+    });
+
+    if (!response.ok) {
+      return {
+        name: 'WHOIS Privacy',
+        status: 'warn',
+        detail: 'Could not verify WHOIS information',
+        weight: 5,
+      };
+    }
+
+    const data = await response.json();
+
+    // Check for privacy/proxy service indicators
+    const entities = data.entities || [];
+    const privacyKeywords = [
+      'privacy',
+      'proxy',
+      'redacted',
+      'protected',
+      'whoisguard',
+      'domains by proxy',
+      'contact privacy',
+      'private registration',
+      'withheld',
+      'data redacted',
+    ];
+
+    // Check entities for privacy indicators
+    for (const entity of entities) {
+      const vcardArray = entity.vcardArray || [];
+      const vcardString = JSON.stringify(vcardArray).toLowerCase();
+
+      for (const keyword of privacyKeywords) {
+        if (vcardString.includes(keyword)) {
+          return {
+            name: 'WHOIS Privacy',
+            status: 'warn',
+            detail: 'WHOIS privacy protection enabled (identity hidden)',
+            weight: 15,
+          };
+        }
+      }
+
+      // Check if organization name contains privacy keywords
+      const org = entity.publicIds?.find(
+        (id: any) => id.type === 'organization',
+      );
+      if (
+        org &&
+        privacyKeywords.some((kw) => org.identifier?.toLowerCase().includes(kw))
+      ) {
+        return {
+          name: 'WHOIS Privacy',
+          status: 'warn',
+          detail: 'WHOIS privacy protection enabled (identity hidden)',
+          weight: 15,
+        };
+      }
+    }
+
+    // Check remarks for redaction notices
+    const remarks = data.remarks || [];
+    for (const remark of remarks) {
+      const description = (remark.description || []).join(' ').toLowerCase();
+      if (privacyKeywords.some((kw) => description.includes(kw))) {
+        return {
+          name: 'WHOIS Privacy',
+          status: 'warn',
+          detail: 'WHOIS information redacted or protected',
+          weight: 15,
+        };
+      }
+    }
+
+    return {
+      name: 'WHOIS Privacy',
+      status: 'pass',
+      detail: 'WHOIS information publicly available',
+      weight: 0,
+    };
+  } catch (error) {
+    return {
+      name: 'WHOIS Privacy',
+      status: 'warn',
+      detail: 'Could not check WHOIS privacy',
+      weight: 5,
+    };
+  }
+}
+
 // Check SSL certificate
 async function checkSSL(urlString: string): Promise<CheckResult> {
   try {
@@ -574,6 +673,7 @@ async function checkRedirects(urlString: string): Promise<CheckResult> {
     }
 
     let redirectCount = 0;
+    let legitimateRedirects = 0;
     let currentUrl = urlString;
     const maxRedirects = 10;
     const visitedUrls = new Set<string>();
@@ -596,37 +696,71 @@ async function checkRedirects(urlString: string): Promise<CheckResult> {
       });
 
       if (response.status >= 300 && response.status < 400) {
-        redirectCount++;
         const location = response.headers.get('location');
         if (!location) break;
-        currentUrl = location.startsWith('http')
+
+        const nextUrl = location.startsWith('http')
           ? location
           : new URL(location, currentUrl).toString();
+
+        // Check if this is a legitimate redirect
+        const currentParsed = new URL(currentUrl);
+        const nextParsed = new URL(nextUrl);
+
+        // Legitimate redirects: http->https, non-www->www, www->non-www (same domain)
+        const isHttpToHttps =
+          currentParsed.protocol === 'http:' &&
+          nextParsed.protocol === 'https:' &&
+          currentParsed.hostname === nextParsed.hostname;
+        const isWwwRedirect =
+          currentParsed.hostname.replace(/^www\./, '') ===
+            nextParsed.hostname.replace(/^www\./, '') &&
+          currentParsed.protocol === nextParsed.protocol;
+
+        if (isHttpToHttps || isWwwRedirect) {
+          legitimateRedirects++;
+        }
+
+        redirectCount++;
+        currentUrl = nextUrl;
       } else {
         break;
       }
     }
 
-    if (redirectCount >= 5) {
+    // Subtract legitimate redirects from the count for scoring
+    const suspiciousRedirects = Math.max(
+      0,
+      redirectCount - legitimateRedirects,
+    );
+
+    if (suspiciousRedirects >= 5) {
       return {
         name: 'Redirects',
         status: 'fail',
-        detail: `${redirectCount} redirects (excessive)`,
+        detail: `${suspiciousRedirects} suspicious redirects (excessive)`,
         weight: 25,
       };
-    } else if (redirectCount >= 3) {
+    } else if (suspiciousRedirects >= 3) {
       return {
         name: 'Redirects',
         status: 'warn',
-        detail: `${redirectCount} redirects`,
+        detail: `${suspiciousRedirects} suspicious redirects`,
         weight: 15,
       };
-    } else if (redirectCount >= 1) {
+    } else if (suspiciousRedirects >= 1) {
       return {
         name: 'Redirects',
         status: 'warn',
-        detail: `${redirectCount} redirect(s)`,
+        detail: `${suspiciousRedirects} redirect(s)`,
         weight: 5,
+      };
+    } else if (redirectCount > 0 && legitimateRedirects === redirectCount) {
+      return {
+        name: 'Redirects',
+        status: 'pass',
+        detail: `${legitimateRedirects} legitimate redirect(s) (http→https or www)`,
+        weight: 0,
       };
     }
 
@@ -710,13 +844,215 @@ async function checkDNS(domain: string): Promise<CheckResult> {
   }
 }
 
+// Check content analysis (HTML/JavaScript inspection)
+async function checkContentAnalysis(urlString: string): Promise<CheckResult> {
+  try {
+    if (!urlString.startsWith('http')) {
+      urlString = 'https://' + urlString;
+    }
+
+    const response = await fetch(urlString, {
+      method: 'GET',
+      signal: AbortSignal.timeout(8000),
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; SusscoreBot/1.0)',
+      },
+    });
+
+    if (!response.ok) {
+      return {
+        name: 'Content Analysis',
+        status: 'warn',
+        detail: 'Could not fetch page content',
+        weight: 5,
+      };
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('text/html')) {
+      return {
+        name: 'Content Analysis',
+        status: 'pass',
+        detail: 'Non-HTML content (skipped)',
+        weight: 0,
+      };
+    }
+
+    const html = await response.text();
+    const htmlLower = html.toLowerCase();
+
+    // Suspicious patterns in HTML/JavaScript
+    const suspiciousPatterns = [
+      {
+        pattern: /<input[^>]*type=["']password["'][^>]*>/i,
+        keyword: 'password',
+        reason: 'Contains password input field',
+        weight: 25,
+      },
+      {
+        pattern: /eval\s*\(/,
+        keyword: 'eval(',
+        reason: 'Uses eval() (potential code injection)',
+        weight: 30,
+      },
+      {
+        pattern: /document\.write\s*\(/,
+        keyword: 'document.write',
+        reason: 'Uses document.write() (suspicious)',
+        weight: 20,
+      },
+      {
+        pattern: /atob\s*\(|btoa\s*\(/,
+        keyword: 'base64',
+        reason: 'Uses base64 encoding (potential obfuscation)',
+        weight: 15,
+      },
+      {
+        pattern: /fromCharCode/,
+        keyword: 'fromCharCode',
+        reason: 'Uses character code obfuscation',
+        weight: 20,
+      },
+      {
+        pattern: /<iframe[^>]*hidden[^>]*>/i,
+        keyword: 'hidden iframe',
+        reason: 'Contains hidden iframe',
+        weight: 35,
+      },
+      {
+        pattern: /window\.location\s*=|location\.href\s*=/,
+        keyword: 'redirect',
+        reason: 'Contains JavaScript redirect',
+        weight: 15,
+      },
+    ];
+
+    // Check for fake login forms (password field without proper domain context)
+    const hasPasswordField = /<input[^>]*type=["']password["'][^>]*>/i.test(
+      html,
+    );
+    const hasLoginKeywords = /(login|signin|log in|sign in)/i.test(html);
+
+    if (hasPasswordField && hasLoginKeywords) {
+      // Check if it's a legitimate login page by looking for common indicators
+      const legitimateIndicators = [
+        /forgot.*password/i,
+        /remember.*me/i,
+        /create.*account/i,
+        /terms.*service/i,
+        /privacy.*policy/i,
+      ];
+
+      const hasLegitimateIndicators = legitimateIndicators.some((pattern) =>
+        pattern.test(html),
+      );
+
+      if (!hasLegitimateIndicators) {
+        return {
+          name: 'Content Analysis',
+          status: 'fail',
+          detail: 'Suspicious login form detected (possible phishing)',
+          weight: 40,
+        };
+      }
+    }
+
+    // Check for multiple suspicious patterns
+    let suspiciousCount = 0;
+    let highestWeight = 0;
+    let highestReason = '';
+
+    for (const { pattern, reason, weight } of suspiciousPatterns) {
+      if (pattern.test(html)) {
+        suspiciousCount++;
+        if (weight > highestWeight) {
+          highestWeight = weight;
+          highestReason = reason;
+        }
+      }
+    }
+
+    if (suspiciousCount >= 3) {
+      return {
+        name: 'Content Analysis',
+        status: 'fail',
+        detail: `Multiple suspicious patterns detected (${suspiciousCount} found)`,
+        weight: 35,
+      };
+    } else if (suspiciousCount >= 2) {
+      return {
+        name: 'Content Analysis',
+        status: 'warn',
+        detail: `${suspiciousCount} suspicious patterns found`,
+        weight: 20,
+      };
+    } else if (suspiciousCount === 1) {
+      return {
+        name: 'Content Analysis',
+        status: 'warn',
+        detail: highestReason,
+        weight: highestWeight,
+      };
+    }
+
+    // Check for excessive external scripts (potential malware distribution)
+    const scriptTags =
+      html.match(/<script[^>]*src=["'][^"']*["'][^>]*>/gi) || [];
+    const externalScripts = scriptTags.filter((tag) => {
+      const srcMatch = tag.match(/src=["']([^"']*)["']/i);
+      if (!srcMatch) return false;
+      const src = srcMatch[1];
+      return (
+        src.startsWith('http') && !src.includes(new URL(urlString).hostname)
+      );
+    });
+
+    if (externalScripts.length > 10) {
+      return {
+        name: 'Content Analysis',
+        status: 'warn',
+        detail: `Loads ${externalScripts.length} external scripts (unusual)`,
+        weight: 15,
+      };
+    }
+
+    return {
+      name: 'Content Analysis',
+      status: 'pass',
+      detail: 'No suspicious content patterns detected',
+      weight: 0,
+    };
+  } catch (error: any) {
+    // Timeout or network error
+    if (error.name === 'AbortError' || error.code === 'ETIMEDOUT') {
+      return {
+        name: 'Content Analysis',
+        status: 'warn',
+        detail: 'Page took too long to load',
+        weight: 10,
+      };
+    }
+    return {
+      name: 'Content Analysis',
+      status: 'warn',
+      detail: 'Could not analyze page content',
+      weight: 5,
+    };
+  }
+}
+
 // Calculate sophisticated score with category weighting
 function calculateScore(checks: CheckResult[]): number {
   // Group checks by category
   const categories = {
-    critical: ['Reputation', 'Homograph Attack', 'DNS Records'],
+    critical: [
+      'Reputation',
+      'Homograph Attack',
+      'DNS Records',
+      'Content Analysis',
+    ],
     high: ['Domain Age', 'SSL Certificate', 'Typosquatting', 'URL Patterns'],
-    medium: ['Redirects', 'URL Shortener'],
+    medium: ['Redirects', 'URL Shortener', 'WHOIS Privacy'],
   };
 
   let score = 0;
@@ -774,12 +1110,22 @@ export async function POST(request: NextRequest) {
       : `https://${cleanUrl}`;
 
     // Run all checks in parallel
-    const [domainAge, ssl, reputation, redirects, dns] = await Promise.all([
+    const [
+      domainAge,
+      ssl,
+      reputation,
+      redirects,
+      dns,
+      whoisPrivacy,
+      contentAnalysis,
+    ] = await Promise.all([
       checkDomainAge(domain),
       checkSSL(cleanUrl),
       checkReputation(domain, fullUrl),
       checkRedirects(cleanUrl),
       checkDNS(domain),
+      checkWhoisPrivacy(domain),
+      checkContentAnalysis(cleanUrl),
     ]);
 
     // Synchronous checks
@@ -798,6 +1144,8 @@ export async function POST(request: NextRequest) {
       homograph,
       typosquatting,
       urlShortener,
+      whoisPrivacy,
+      contentAnalysis,
     ];
 
     // Calculate sophisticated score

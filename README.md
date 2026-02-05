@@ -17,6 +17,8 @@ Paste a link. Get a sus score. It's that simple.
 - 🎭 **Homograph Attacks** — Detects Unicode spoofing & look-alike characters
 - 🎯 **Typosquatting** — Identifies domains impersonating popular brands
 - 🔗 **URL Shorteners** — Flags shortened URLs with unknown destinations
+- 🔐 **WHOIS Privacy** — Detects privacy-protected domain registrations
+- 🔍 **Content Analysis** — Inspects HTML/JavaScript for malicious patterns
 
 ## Tech Stack
 
@@ -51,7 +53,7 @@ One-click deploy to Vercel:
 
 ### Advanced Detection
 
-- **9 comprehensive checks** covering multiple attack vectors
+- **11 comprehensive checks** covering multiple attack vectors
 - **Sophisticated scoring algorithm** with category weighting and multipliers
 - **40+ popular brands** monitored for typosquatting
 - **34 suspicious TLDs** flagged for abuse patterns
@@ -59,6 +61,8 @@ One-click deploy to Vercel:
 - **Homograph attack detection** for Unicode spoofing
 - **DNS validation** with private IP detection
 - **Redirect loop detection** with cycle prevention
+- **WHOIS privacy detection** for hidden domain ownership
+- **Content analysis** for malicious HTML/JavaScript patterns
 
 ### Smart Analysis
 
@@ -68,6 +72,10 @@ One-click deploy to Vercel:
 - Punycode (xn--) internationalized domain flagging
 - Executable file extension detection
 - Phishing keyword pattern matching
+- WHOIS privacy service detection (privacy/proxy indicators)
+- Suspicious JavaScript pattern detection (eval, obfuscation)
+- Fake login form detection with legitimacy indicators
+- External script analysis for malware distribution
 
 ## Contributing
 
@@ -77,8 +85,8 @@ PRs welcome! Some ideas:
 - [ ] Browser extension
 - [ ] Historical data / trending scams
 - [ ] Machine learning model for pattern detection
-- [ ] WHOIS privacy detection
-- [ ] Content analysis (HTML/JavaScript inspection)
+- [x] WHOIS privacy detection
+- [x] Content analysis (HTML/JavaScript inspection)
 
 ## License
 

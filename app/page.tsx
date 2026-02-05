@@ -172,7 +172,8 @@ export default function Home() {
               paste a link. find out if it's sketchy.
             </p>
             <p className='text-gray-600 text-xs mt-2'>
-              9 comprehensive checks • 40+ brands protected • real-time analysis
+              11 comprehensive checks • 40+ brands protected • real-time
+              analysis
             </p>
           </motion.div>
 
@@ -359,6 +360,14 @@ export default function Home() {
                     <p>
                       • <span className='text-gray-400'>URL Shorteners:</span>{' '}
                       Flags hidden destinations
+                    </p>
+                    <p>
+                      • <span className='text-gray-400'>WHOIS Privacy:</span>{' '}
+                      Detects hidden domain ownership
+                    </p>
+                    <p>
+                      • <span className='text-gray-400'>Content Analysis:</span>{' '}
+                      Inspects HTML/JavaScript for threats
                     </p>
                   </div>
                 </motion.div>
